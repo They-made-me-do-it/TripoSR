@@ -4,9 +4,7 @@ import os
 import time
 
 import numpy as np
-import rembg
 import torch
-import xatlas
 from PIL import Image
 
 from tsr.system import TSR
@@ -114,6 +112,12 @@ args = parser.parse_args()
 output_dir = args.output_dir
 os.makedirs(output_dir, exist_ok=True)
 
+
+def ensure_image_output_dir(image_index: int) -> str:
+    path = os.path.join(output_dir, str(image_index))
+    os.makedirs(path, exist_ok=True)
+    return path
+
 device = args.device
 if not torch.cuda.is_available():
     device = "cpu"
@@ -134,20 +138,23 @@ images = []
 if args.no_remove_bg:
     rembg_session = None
 else:
+    import rembg
+
     rembg_session = rembg.new_session()
 
 for i, image_path in enumerate(args.image):
+    image_output_dir = os.path.join(output_dir, str(i))
+
     if args.no_remove_bg:
         image = np.array(Image.open(image_path).convert("RGB"))
     else:
+        image_output_dir = ensure_image_output_dir(i)
         image = remove_background(Image.open(image_path), rembg_session)
         image = resize_foreground(image, args.foreground_ratio)
         image = np.array(image).astype(np.float32) / 255.0
         image = image[:, :, :3] * image[:, :, 3:4] + (1 - image[:, :, 3:4]) * 0.5
         image = Image.fromarray((image * 255.0).astype(np.uint8))
-        if not os.path.exists(os.path.join(output_dir, str(i))):
-            os.makedirs(os.path.join(output_dir, str(i)))
-        image.save(os.path.join(output_dir, str(i), f"input.png"))
+        image.save(os.path.join(image_output_dir, "input.png"))
     images.append(image)
 timer.end("Processing images")
 
@@ -160,22 +167,24 @@ for i, image in enumerate(images):
     timer.end("Running model")
 
     if args.render:
+        image_output_dir = ensure_image_output_dir(i)
         timer.start("Rendering")
         render_images = model.render(scene_codes, n_views=30, return_type="pil")
         for ri, render_image in enumerate(render_images[0]):
-            render_image.save(os.path.join(output_dir, str(i), f"render_{ri:03d}.png"))
-        save_video(
-            render_images[0], os.path.join(output_dir, str(i), f"render.mp4"), fps=30
-        )
+            render_image.save(os.path.join(image_output_dir, f"render_{ri:03d}.png"))
+        save_video(render_images[0], os.path.join(image_output_dir, "render.mp4"), fps=30)
         timer.end("Rendering")
 
     timer.start("Extracting mesh")
     meshes = model.extract_mesh(scene_codes, not args.bake_texture, resolution=args.mc_resolution)
     timer.end("Extracting mesh")
 
-    out_mesh_path = os.path.join(output_dir, str(i), f"mesh.{args.model_save_format}")
+    image_output_dir = ensure_image_output_dir(i)
+    out_mesh_path = os.path.join(image_output_dir, f"mesh.{args.model_save_format}")
     if args.bake_texture:
-        out_texture_path = os.path.join(output_dir, str(i), "texture.png")
+        import xatlas
+
+        out_texture_path = os.path.join(image_output_dir, "texture.png")
 
         timer.start("Baking texture")
         bake_output = bake_texture(meshes[0], model, scene_codes[0], args.texture_resolution)

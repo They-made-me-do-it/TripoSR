@@ -1,12 +1,12 @@
 import numpy as np
 import torch
-import xatlas
 import trimesh
-import moderngl
 from PIL import Image
 
 
 def make_atlas(mesh, texture_resolution, texture_padding):
+    import xatlas
+
     atlas = xatlas.Atlas()
     atlas.add_mesh(mesh.vertices, mesh.faces)
     options = xatlas.PackOptions()
@@ -25,6 +25,8 @@ def make_atlas(mesh, texture_resolution, texture_padding):
 def rasterize_position_atlas(
     mesh, atlas_vmapping, atlas_indices, atlas_uvs, texture_resolution, texture_padding
 ):
+    import moderngl
+
     ctx = moderngl.create_context(standalone=True)
     basic_prog = ctx.program(
         vertex_shader="""
