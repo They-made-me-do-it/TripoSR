@@ -3,8 +3,18 @@ from typing import Callable, Optional, Tuple
 import numpy as np
 import torch
 import torch.nn as nn
-from torchmcubes import marching_cubes
 
+try:
+    from torchmcubes import marching_cubes
+except ImportError:
+    from skimage.measure import marching_cubes as skimage_marching_cubes
+    
+    def marching_cubes(volume, isovalue):
+        if isinstance(volume, torch.Tensor):
+            volume = volume.detach().cpu().numpy()
+        
+        verts, faces, normals, values = skimage_marching_cubes(volume, level=isovalue)
+        return torch.from_numpy(verts.copy()), torch.from_numpy(faces.copy()).long()
 
 class IsosurfaceHelper(nn.Module):
     points_range: Tuple[float, float] = (0, 1)
